@@ -10,7 +10,7 @@ const openModal = async (trigger_id, command) => {
       callback_id: command === "/kb-request" ? "kb_request_modal" : "kb_flag_modal",
       title: {
         type: "plain_text",
-        text: command === "/kb-request" ? "New KB Request" : "Flag KB Article"
+        text: "/kb-request"
       },
       submit: {
         type: "plain_text",
