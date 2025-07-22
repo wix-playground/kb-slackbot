@@ -79,3 +79,13 @@ app.view("kb_request_modal", async ({ ack, view, body }) => {
   await app.start();
   console.log("⚡️ Slack Bolt app is running via Socket Mode");
 })();
+const express = require("express");
+const appServer = express();
+const port = process.env.PORT || 3000;
+
+appServer.get("/", (req, res) => res.send("Slackbot running via Socket Mode"));
+
+appServer.listen(port, () => {
+  console.log(`Dummy server listening on port ${port}`);
+});
+
