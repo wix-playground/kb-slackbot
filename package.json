@@ -1,15 +1,23 @@
 {
-  "name": "kb-slackbot",
+  "name": "slack-monday-integration",
   "version": "1.0.0",
-  "main": "server.js",
+  "description": "Slack and Monday.com integration app",
+  "main": "app.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node app.js",
+    "dev": "nodemon app.js",
+    "build": "echo 'No build step required'"
   },
   "dependencies": {
+    "@slack/bolt": "^3.14.0",
     "axios": "^1.6.0",
-    "body-parser": "^1.20.2",
-    "dotenv": "^16.3.1",
-    "express": "^4.18.2"
-    "@slack/bolt": "^3.14.0"
+    "express": "^4.18.2",
+    "dotenv": "^16.3.1"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.1"
+  },
+  "engines": {
+    "node": ">=18.0.0"
   }
 }
