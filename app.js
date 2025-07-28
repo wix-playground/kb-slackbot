@@ -95,4 +95,12 @@ app.event('message', async ({ event, client }) => {
 (async () => {
   await app.start(process.env.PORT || 3000);
   console.log('⚡️ KB Request Bot running in Socket Mode');
+  
+  const express = require('express');
+  const server = express();
+
+  server.get('/', (req, res) => res.send('KB Request Bot is running'));
+  server.listen(process.env.PORT || 3000, () => {
+  console.log(`🔗 HTTP server listening on port ${process.env.PORT || 3000}`);
+});
 })();
