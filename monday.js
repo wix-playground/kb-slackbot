@@ -4,6 +4,7 @@ const FormData = require('form-data');
 const MONDAY_API_URL    = 'https://api.monday.com/v2';
 const MONDAY_API_TOKEN  = process.env.MONDAY_API_TOKEN;
 const MONDAY_BOARD_ID   = process.env.MONDAY_BOARD_ID;
+const SLACK_BOT_TOKEN   = process.env.SLACK_BOT_TOKEN;
 
 const columnMapping = {
   articleLink:  'link',       // Link to Article
@@ -46,5 +47,41 @@ const createMondayItem = async ({ articleLink, requestType, description, user, f
 
   // 3) Attach each Slack file
   for (const slackFileId of files) {
-    // a) get download URL
-    const info = await axios.post('https://slack.com/api/f
+    // a) Get file info from Slack
+    const fileInfoRes = await axios.get(
+      `https://slack.com/api/files.info?file=${slackFileId}`,
+      { headers: { Authorization: `Bearer ${SLACK_BOT_TOKEN}` } }
+    );
+    if (!fileInfoRes.data.ok) continue;
+    const downloadUrl = fileInfoRes.data.file.url_private_download;
+    const filename = fileInfoRes.data.file.name;
+
+    // b) Download file from Slack
+    const fileDownloadRes = await axios.get(downloadUrl, {
+      headers: { Authorization: `Bearer ${SLACK_BOT_TOKEN}` },
+      responseType: 'arraybuffer'
+    });
+
+    // c) Upload file to Monday.com
+    const form = new FormData();
+    form.append('query', `
+      mutation ($file: File!, $itemId: Int!, $columnId: String!) {
+        add_file_to_column (file: $file, item_id: $itemId, column_id: $columnId) { id }
+      }
+    `);
+    form.append('variables[itemId]', itemId);
+    form.append('variables[columnId]', columnMapping.attachments);
+    form.append('variables[file]', fileDownloadRes.data, filename);
+
+    await axios.post(MONDAY_API_URL, form, {
+      headers: {
+        ...form.getHeaders(),
+        Authorization: MONDAY_API_TOKEN
+      }
+    });
+  }
+
+  return itemId;
+};
+
+module.exports = { createMondayItem };
