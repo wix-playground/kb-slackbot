@@ -112,3 +112,8 @@ app.view(/kb_request_modal|kb_flag_modal/, async ({ ack, view, body, client }) =
 });
 
 module.exports = app;
+(async () => {
+  await app.start(process.env.PORT || 3000);
+  console.log('⚡️ KB Request Bot running in Socket Mode');
+})();
+
