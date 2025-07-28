@@ -4,6 +4,10 @@
   "description": "Slack and Monday.com integration app",
   "main": "app.js",
   "scripts": {
+    "build": "echo 'No build step needed'",     // or compile TypeScript, etc.
+    "lint": "eslint . --max-warnings=0",
+    "test": "jest",                              // or a smoke test: node app.js --version
+    "ci:smoke": "node app.js --check-health"     // custom health‑check script
   "start": "node app.js"
 },
   "dependencies": {
