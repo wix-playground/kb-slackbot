@@ -4,10 +4,8 @@
   "description": "Slack and Monday.com integration app",
   "main": "index.js",
   "scripts": {
-    "start": "node index.js",
-    "dev": "nodemon index.js",
-    "build": "echo 'No build step required'"
-  },
+  "start": "node slack.js"
+},
   "dependencies": {
     "@slack/bolt": "^3.14.0",
     "axios": "^1.6.0",
