@@ -1,7 +1,7 @@
 // slack.js
 require('dotenv').config();
 
-const { App, ExpressReceiver } = require('@slack/bolt');
+const { App } = require('@slack/bolt');
 const { createMondayItem } = require('./monday');
 
 // ——— ExpressReceiver for HTTP delivery ———
@@ -13,8 +13,10 @@ const receiver = new ExpressReceiver({
 
 // ——— Initialize your Bolt App with that receiver ———
 const app = new App({
+const app = new App({
   token: process.env.SLACK_BOT_TOKEN,
-  receiver,
+  appToken: process.env.SLACK_APP_TOKEN, // xapp-...
+  socketMode: true,
 });
 
 // ——— Modal builder (reusable) ———
