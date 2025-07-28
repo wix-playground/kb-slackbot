@@ -1,6 +1,7 @@
 // app.js
 require('dotenv').config();
 const { App } = require('@slack/bolt');
+const express = require('express');
 const { createMondayItem } = require('./monday');
 
 // ——— Initialize Bolt in Socket Mode ———
@@ -33,74 +34,63 @@ app.event('message', async ({ event, client }) => {
   const session = sessions[user];
   if (!session) return; // ignore DMs you didn’t initiate
 
-  const text = (event.text || '').trim();
-  const files = event.files || [];
+  try {
+    const text = (event.text || '').trim();
+    const files = event.files || [];
 
-  switch (session.step) {
-    case 1:
-      session.data.subject = text;
-      session.step = 2;
-      return client.chat.postMessage({
-        channel: event.channel,
-        text: '✅ Got it. What’s the **Task Type**? (e.g., Quick Update, New Feature)',
-      });
-
-    case 2:
-      session.data.taskType = text;
-      session.step = 3;
-      return client.chat.postMessage({
-        channel: event.channel,
-        text: '✅ Thanks. Which **Product** is this for?',
-      });
-
-    case 3:
-      session.data.product = text;
-      session.step = 4;
-      return client.chat.postMessage({
-        channel: event.channel,
-        text: '✅ Great. Please provide a **Description**.',
-      });
-
-    case 4:
-      session.data.description = text;
-      session.step = 5;
-      return client.chat.postMessage({
-        channel: event.channel,
-        text: '✅ Almost done! If you have **screenshots or files**, upload them now. When you’re ready, type `submit`.',
-      });
-
-    case 5:
-      if (files.length) {
-        session.data.files = session.data.files || [];
-        for (const f of files) session.data.files.push(f.id);
+    switch (session.step) {
+      case 1:
+        session.data.subject = text;
+        session.step = 2;
         return client.chat.postMessage({
           channel: event.channel,
-          text: `👍 Captured ${files.length} file(s). Upload more or type \`submit\`.`,
+          text: '✅ Got it. What’s the **Task Type**? (e.g., Quick Update, New Feature)',
         });
-      }
-      if (text.toLowerCase() === 'submit') {
-        // fire off to Monday.com
-        await createMondayItem({ ...session.data, user });
-        await client.chat.postMessage({
+
+      case 2:
+        session.data.taskType = text;
+        session.step = 3;
+        return client.chat.postMessage({
           channel: event.channel,
-          text: '🎉 Your KB request has been submitted to the Monday.com board!',
+          text: '✅ Thanks. Which **Product** is this for?',
         });
-        delete sessions[user];
-      }
-      return;
-  }
-});
 
-// ——— Start the app ———
-(async () => {
-  await app.start(process.env.PORT || 3000);
-  console.log('⚡️ KB Request Bot running in Socket Mode');
-  
-  const express = require('express');
-  const server = express();
+      case 3:
+        session.data.product = text;
+        session.step = 4;
+        return client.chat.postMessage({
+          channel: event.channel,
+          text: '✅ Great. Please provide a **Description**.',
+        });
 
-  server.get('/', (req, res) => res.send('KB Request Bot is running'));
-  server.listen(process.env.PORT || 3000, () => {
-  console.log(`🔗 HTTP server listening on port ${process.env.PORT || 3000}`);
-});
-})();
+      case 4:
+        session.data.description = text;
+        session.step = 5;
+        return client.chat.postMessage({
+          channel: event.channel,
+          text: '✅ Almost done! If you have **screenshots or files**, upload them now. When you’re ready, type `submit`.',
+        });
+
+      case 5:
+        if (files.length) {
+          session.data.files = session.data.files || [];
+          for (const f of files) session.data.files.push(f.id);
+          return client.chat.postMessage({
+            channel: event.channel,
+            text: `👍 Captured ${files.length} file(s). Upload more or type \`submit\`.`,
+          });
+        }
+        if (text.toLowerCase() === 'submit') {
+          await createMondayItem({ ...session.data, user });
+          await client.chat.postMessage({
+            channel: event.channel,
+            text: '🎉 Your KB request has been submitted to the Monday.com board!',
+          });
+          delete sessions[user];
+        }
+        return;
+    }
+
+  } catch (err) {
+    // notify user & log for you
+    await client.chat.postMe
