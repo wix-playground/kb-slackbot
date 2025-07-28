@@ -1,4 +1,3 @@
-// app.js
 require('dotenv').config();
 const { App } = require('@slack/bolt');
 const express = require('express');
@@ -6,8 +5,8 @@ const { createMondayItem } = require('./monday');
 
 // ——— Initialize Bolt in Socket Mode ———
 const app = new App({
-  token: process.env.SLACK_BOT_TOKEN,    // xoxb-…
-  appToken: process.env.SLACK_APP_TOKEN, // xapp-…
+  token: process.env.SLACK_BOT_TOKEN,
+  appToken: process.env.SLACK_APP_TOKEN,
   socketMode: true,
 });
 
@@ -46,7 +45,6 @@ app.event('message', async ({ event, client }) => {
           channel: event.channel,
           text: '✅ Got it. What’s the **Task Type**? (e.g., Quick Update, New Feature)',
         });
-
       case 2:
         session.data.taskType = text;
         session.step = 3;
@@ -54,7 +52,6 @@ app.event('message', async ({ event, client }) => {
           channel: event.channel,
           text: '✅ Thanks. Which **Product** is this for?',
         });
-
       case 3:
         session.data.product = text;
         session.step = 4;
@@ -62,7 +59,6 @@ app.event('message', async ({ event, client }) => {
           channel: event.channel,
           text: '✅ Great. Please provide a **Description**.',
         });
-
       case 4:
         session.data.description = text;
         session.step = 5;
@@ -70,7 +66,6 @@ app.event('message', async ({ event, client }) => {
           channel: event.channel,
           text: '✅ Almost done! If you have **screenshots or files**, upload them now. When you’re ready, type `submit`.',
         });
-
       case 5:
         if (files.length) {
           session.data.files = session.data.files || [];
@@ -90,7 +85,24 @@ app.event('message', async ({ event, client }) => {
         }
         return;
     }
-
   } catch (err) {
-    // notify user & log for you
-    await client.chat.postMe
+    await client.chat.postMessage({
+      channel: event.channel,
+      text: `⚠️ An error occurred: ${err.message || 'Unknown error.'}`,
+    });
+    console.error('Error in DM Q&A handler:', err);
+  }
+});
+
+// ——— Express health check server ———
+const server = express();
+server.get('/', (req, res) => res.send('KB Request Bot is running'));
+server.listen(process.env.PORT || 3000, () => {
+  console.log(`🔗 HTTP server listening on port ${process.env.PORT || 3000}`);
+});
+
+// ——— Start the app ———
+(async () => {
+  await app.start();
+  console.log('⚡️ KB Request Bot running in Socket Mode');
+})();
