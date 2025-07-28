@@ -86,7 +86,7 @@ app.event('message', async ({ event, client }) => {
         });
 
       case 2:
-        // If user selected from dropdown, it will come as an action, but for now accept text
+        // Accept plain text fallback for task type
         session.data.taskType = text;
         session.step = 3;
         return client.chat.postMessage({
@@ -107,15 +107,48 @@ app.event('message', async ({ event, client }) => {
         session.step = 5;
         return client.chat.postMessage({
           channel: event.channel,
-          text: '📎 If you have **screenshots or files**, upload them now. When you’re ready, click the button below.',
-          blocks: [
-            {
-              type: 'section',
-              text: {
-                type: 'mrkdwn',
-                text: '📎 If you have **screenshots or files**, upload them now. When you’re ready, click the button below.'
+          text: '🔗 If you know the KBs you’d like to update, please paste their URLs here. (Optional)\nYou can add multiple URLs separated by spaces or new lines.',
+        });
+
+      case 5:
+        session.data.kbUrls = text;
+        session.step = 6;
+        return client.chat.postMessage({
+          channel: event.channel,
+          text: '🗂️ Please add any links to supporting materials (Figma files, specs, product decks, etc.), or upload files. Any information helps us document your KBs better.\nPaste URLs below or upload files.',
+        });
+
+      case 6:
+        // Accept supporting materials as text and/or files
+        if (files.length) {
+          session.data.files = session.data.files || [];
+          for (const f of files) session.data.files.push(f.id);
+          return client.chat.postMessage({
+            channel: event.channel,
+            text: `🖼️ Captured ${files.length} file(s). You can upload more or paste more links. When you're ready, click *Submit KB Request* button below.`,
+            blocks: [
+              {
+                type: 'actions',
+                elements: [
+                  {
+                    type: 'button',
+                    text: {
+                      type: 'plain_text',
+                      text: 'Submit KB Request'
+                    },
+                    action_id: 'submit_kb_request'
+                  }
+                ]
               }
-            },
+            ]
+          });
+        }
+        // If the user pastes links for supporting materials
+        session.data.supportingMaterials = text;
+        return client.chat.postMessage({
+          channel: event.channel,
+          text: 'When you’re ready, click the button below to submit your KB request.',
+          blocks: [
             {
               type: 'actions',
               elements: [
@@ -132,17 +165,6 @@ app.event('message', async ({ event, client }) => {
           ]
         });
 
-      // Accept file uploads in step 5 before submission
-      case 5:
-        if (files.length) {
-          session.data.files = session.data.files || [];
-          for (const f of files) session.data.files.push(f.id);
-          return client.chat.postMessage({
-            channel: event.channel,
-            text: `🖼️ Captured ${files.length} file(s). Upload more or click *Submit KB Request* button.`,
-          });
-        }
-        return; // Wait for button click, do not submit on text
     }
   } catch (err) {
     await client.chat.postMessage({
@@ -173,7 +195,7 @@ app.action('submit_kb_request', async ({ ack, body, client }) => {
   await ack();
   const user = body.user.id;
   const session = sessions[user];
-  if (!session || session.step !== 5) return;
+  if (!session || session.step < 6) return;
 
   // Create item in Monday.com
   const itemId = await createMondayItem({ ...session.data, user });
