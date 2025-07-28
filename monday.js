@@ -17,14 +17,15 @@ const columnMapping = {
 const escapeQuotes = str => (str ? str.replace(/"/g, '\\"') : '');
 
 const createMondayItem = async ({ articleLink, requestType, description, user, files = [] }) => {
-  // 1) Build the column_values object
   const columnValues = {
     [columnMapping.articleLink]:  { url: articleLink, text: 'KB Article' },
     [columnMapping.requestType]:  { label: requestType },
     [columnMapping.description]:  description
   };
 
-  // 2) Create the item
+  // Optionally add requestor if your board expects it:
+  // columnValues[columnMapping.requestor] = user;
+
   const createQuery = `
     mutation ($boardId: Int!, $columnVals: JSON!) {
       create_item(
@@ -45,40 +46,41 @@ const createMondayItem = async ({ articleLink, requestType, description, user, f
   );
   const itemId = createRes.data.data.create_item.id;
 
-  // 3) Attach each Slack file
+  // Attach each Slack file with error handling
   for (const slackFileId of files) {
-    // a) Get file info from Slack
-    const fileInfoRes = await axios.get(
-      `https://slack.com/api/files.info?file=${slackFileId}`,
-      { headers: { Authorization: `Bearer ${SLACK_BOT_TOKEN}` } }
-    );
-    if (!fileInfoRes.data.ok) continue;
-    const downloadUrl = fileInfoRes.data.file.url_private_download;
-    const filename = fileInfoRes.data.file.name;
+    try {
+      const fileInfoRes = await axios.get(
+        `https://slack.com/api/files.info?file=${slackFileId}`,
+        { headers: { Authorization: `Bearer ${SLACK_BOT_TOKEN}` } }
+      );
+      if (!fileInfoRes.data.ok) continue;
+      const downloadUrl = fileInfoRes.data.file.url_private_download;
+      const filename = fileInfoRes.data.file.name;
 
-    // b) Download file from Slack
-    const fileDownloadRes = await axios.get(downloadUrl, {
-      headers: { Authorization: `Bearer ${SLACK_BOT_TOKEN}` },
-      responseType: 'arraybuffer'
-    });
+      const fileDownloadRes = await axios.get(downloadUrl, {
+        headers: { Authorization: `Bearer ${SLACK_BOT_TOKEN}` },
+        responseType: 'arraybuffer'
+      });
 
-    // c) Upload file to Monday.com
-    const form = new FormData();
-    form.append('query', `
-      mutation ($file: File!, $itemId: Int!, $columnId: String!) {
-        add_file_to_column (file: $file, item_id: $itemId, column_id: $columnId) { id }
-      }
-    `);
-    form.append('variables[itemId]', itemId);
-    form.append('variables[columnId]', columnMapping.attachments);
-    form.append('variables[file]', fileDownloadRes.data, filename);
+      const form = new FormData();
+      form.append('query', `
+        mutation ($file: File!, $itemId: Int!, $columnId: String!) {
+          add_file_to_column (file: $file, item_id: $itemId, column_id: $columnId) { id }
+        }
+      `);
+      form.append('variables[itemId]', itemId);
+      form.append('variables[columnId]', columnMapping.attachments);
+      form.append('variables[file]', fileDownloadRes.data, filename);
 
-    await axios.post(MONDAY_API_URL, form, {
-      headers: {
-        ...form.getHeaders(),
-        Authorization: MONDAY_API_TOKEN
-      }
-    });
+      await axios.post(MONDAY_API_URL, form, {
+        headers: {
+          ...form.getHeaders(),
+          Authorization: MONDAY_API_TOKEN
+        }
+      });
+    } catch (err) {
+      console.error(`Failed to attach file ${slackFileId}:`, err.message);
+    }
   }
 
   return itemId;
