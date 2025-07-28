@@ -66,11 +66,14 @@ function buildModal(command = '/kb-request') {
 }
 
 // ——— Slash command handler ———
-app.command('/kb-request', async ({ command, ack, client }) => {
+app.command('/kb-request', async ({ ack, command, client }) => {
   await ack();
-  await client.views.open({
-    trigger_id: command.trigger_id,
-    view: buildModal('/kb-request'),
+  // Open a DM with the user
+  const { channel } = await client.conversations.open({ users: command.user_id });
+  // Ask first question
+  await client.chat.postMessage({
+    channel,
+    text: '📝 Let’s get started. What’s the **Subject** for your KB request?',
   });
 });
 
