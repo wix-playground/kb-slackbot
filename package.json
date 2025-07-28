@@ -2,9 +2,9 @@
   "name": "slack-monday-integration",
   "version": "1.0.0",
   "description": "Slack and Monday.com integration app",
-  "main": "index.js",
+  "main": "app.js",
   "scripts": {
-  "start": "node slack.js"
+  "start": "node app.js"
 },
   "dependencies": {
     "@slack/bolt": "^3.14.0",
