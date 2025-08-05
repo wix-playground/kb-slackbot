@@ -198,8 +198,19 @@ app.action('submit_kb_request', async ({ ack, body, client }) => {
   if (!session || session.step < 6) return;
 
   // Create item in Monday.com
-  const itemId = await createMondayItem({ ...session.data, user });
-  const mondayBoardUrl = `https://your-monday-board-url/${itemId}`; // Replace with actual Monday.com item URL logic
+  const { runWorkflow } = require('./handlers/modelhub');
+
+const raw_message = `${session.data.subject}\n${session.data.description}\n${session.data.supportingMaterials || ''}`;
+const workflowOutput = await runWorkflow({
+  pm_message: raw_message,
+  user_id: user
+});
+
+const itemId = await createMondayItem({
+  ...workflowOutput,
+  slack_user: user
+});
+
 
   // Show modal with CTA
   await client.views.open({
