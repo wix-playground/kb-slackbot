@@ -6,13 +6,26 @@ const errorHandler = require('../utils/errorHandler');
 class WorkflowHandler {
   constructor() {
     this.workflowUrl = process.env.WORKFLOW_URL;
-    if (!this.workflowUrl) {
-      throw new Error('WORKFLOW_URL environment variable is required');
+    this.workflowEnabled = !!this.workflowUrl;
+    
+    if (!this.workflowEnabled) {
+      console.warn('   WORKFLOW_URL not configured - AI features will be disabled');
     }
   }
 
   // Process user message through AI workflow
   async processMessageWorkflow(pmMessage, userId) {
+    if (!this.workflowEnabled) {
+      console.log('= AI workflow disabled - returning fallback response');
+      return {
+        article_link: '',
+        request_type: 'General',
+        urgency_level: 'Medium',
+        feature_name: 'User Request',
+        change_description: pmMessage
+      };
+    }
+
     // Validate inputs
     const sanitizedMessage = validators.validateText(pmMessage, 'PM Message', { 
       minLength: 5, 
@@ -63,7 +76,7 @@ class WorkflowHandler {
     ].filter(Boolean).join('\n\n');
 
     try {
-      // Get AI analysis
+      // Get AI analysis (or fallback if disabled)
       const workflowOutput = await this.processMessageWorkflow(combinedMessage, sanitizedUserId);
 
       // Merge AI output with validated user data
@@ -78,7 +91,7 @@ class WorkflowHandler {
         files: validatedRequest.files,
         slackUser: sanitizedUserId,
 
-        // AI analyzed data  
+        // AI analyzed data (or fallbacks)
         articleLink: workflowOutput?.article_link || '',
         requestType: workflowOutput?.request_type || validatedRequest.taskType,
         urgencyLevel: workflowOutput?.urgency_level || 'Medium',
@@ -86,7 +99,8 @@ class WorkflowHandler {
         changeDescription: workflowOutput?.change_description || validatedRequest.description,
         
         // Additional metadata
-        processedAt: new Date().toISOString()
+        processedAt: new Date().toISOString(),
+        aiWorkflowEnabled: this.workflowEnabled
       };
     } catch (error) {
       // If AI workflow fails, still return user data
@@ -117,6 +131,13 @@ class WorkflowHandler {
 
   // Health check for the workflow service
   async healthCheck() {
+    if (!this.workflowEnabled) {
+      return { 
+        status: 'disabled', 
+        message: 'WORKFLOW_URL not configured' 
+      };
+    }
+
     try {
       await axios.get(`${this.workflowUrl}/health`, { timeout: 5000 });
       return { status: 'healthy' };
