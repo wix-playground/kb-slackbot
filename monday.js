@@ -23,9 +23,6 @@ const createMondayItem = async ({ articleLink, requestType, description, user, f
     [columnMapping.description]:  description
   };
 
-  // Optionally add requestor if your board expects it:
-  // columnValues[columnMapping.requestor] = user;
-
   const createQuery = `
     mutation ($boardId: Int!, $columnVals: JSON!) {
       create_item(
@@ -36,7 +33,8 @@ const createMondayItem = async ({ articleLink, requestType, description, user, f
     }
   `;
   const createRes = await axios.post(MONDAY_API_URL,
-    { query: createQuery,
+    {
+      query: createQuery,
       variables: {
         boardId: MONDAY_BOARD_ID,
         columnVals: columnValues
@@ -46,7 +44,7 @@ const createMondayItem = async ({ articleLink, requestType, description, user, f
   );
   const itemId = createRes.data.data.create_item.id;
 
-  // Attach each Slack file with error handling
+  // Attach each Slack file
   for (const slackFileId of files) {
     try {
       const fileInfoRes = await axios.get(
@@ -54,6 +52,7 @@ const createMondayItem = async ({ articleLink, requestType, description, user, f
         { headers: { Authorization: `Bearer ${SLACK_BOT_TOKEN}` } }
       );
       if (!fileInfoRes.data.ok) continue;
+
       const downloadUrl = fileInfoRes.data.file.url_private_download;
       const filename = fileInfoRes.data.file.name;
 
@@ -82,9 +81,10 @@ const createMondayItem = async ({ articleLink, requestType, description, user, f
       console.error(`Failed to attach file ${slackFileId}:`, err.message);
     }
   }
-const boardUrl = `https://wix.monday.com/boards/${MONDAY_BOARD_ID}/pulses/${itemId}`;
-return boardUrl;
 
+  // ✅ Final return: full board + pulse link
+  const boardUrl = `https://wix.monday.com/boards/${MONDAY_BOARD_ID}/pulses/${itemId}`;
+  return boardUrl;
 };
 
 module.exports = { createMondayItem };
