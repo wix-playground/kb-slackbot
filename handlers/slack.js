@@ -35,15 +35,20 @@ async function handleSlackEvent(event) {
 
 async function runModelHubWorkflow(inputs) {
   const url = process.env.WORKFLOW_URL;
-  const token = process.env.MODEL_HUB_TOKEN;
 
   const res = await axios.post(
     url,
     { inputs },
-    { headers: { Authorization: `Bearer ${token}` } }
+    {
+      headers: {
+        'Content-Type': 'application/json'
+        // 🔥 Removed broken reference to `token`
+        // No token is needed if you're using a Falcon/Serverless proxy
+      }
+    }
   );
 
-  return res.data.result;
+  return res.data.outputs; // ✅ This matches your modelhub.js structure
 }
 
 module.exports = { handleSlackEvent };
