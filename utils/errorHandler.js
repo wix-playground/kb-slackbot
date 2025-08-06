@@ -9,21 +9,21 @@ class ErrorHandler {
   createSlackErrorMessage(error, context = {}) {
     const { channel, user } = context;
     
-    let userMessage = '  Sorry, something went wrong. Please try again.';
+    let userMessage = 'Sorry, something went wrong. Please try again.';
     let shouldRetry = true;
 
     if (error instanceof ValidationError) {
       userMessage = `L ${error.message}`;
       shouldRetry = false;
     } else if (error.code === 'ENOTFOUND' || error.code === 'ECONNREFUSED') {
-      userMessage = '= Connection issue. Please try again in a moment.';
+      userMessage = 'Connection issue. Please try again in a moment.';
     } else if (error.response?.status === 429) {
-      userMessage = 'ó Too many requests. Please wait a moment and try again.';
+      userMessage = 'Too many requests. Please wait a moment and try again.';
     } else if (error.response?.status >= 400 && error.response?.status < 500) {
-      userMessage = '  There was an issue with your request. Please check your input and try again.';
+      userMessage = 'There was an issue with your request. Please check your input and try again.';
       shouldRetry = false;
     } else if (error.response?.status >= 500) {
-      userMessage = '=' Service temporarily unavailable. Please try again later.';
+      userMessage = 'Service temporarily unavailable. Please try again later.';
     }
 
     return {
