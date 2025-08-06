@@ -26,8 +26,12 @@ jobs:
     - name: Run security audit
       run: npm audit --audit-level=high || true
 
-    - name: Run linter (optional)
+    - name: Run linter
       run: npx eslint . || true
 
-    - name: Run tests (skip error if none found)
+    - name: Run tests
       run: npm test -- --passWithNoTests
+
+    # Optional: Deploy to Render
+    # - name: Trigger Render Deployment
+    #   run: curl -X POST ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
