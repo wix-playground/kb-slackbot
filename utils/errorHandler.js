@@ -18,7 +18,7 @@ class ErrorHandler {
     } else if (error.code === 'ENOTFOUND' || error.code === 'ECONNREFUSED') {
       userMessage = '= Connection issue. Please try again in a moment.';
     } else if (error.response?.status === 429) {
-      userMessage = '=¦ Too many requests. Please wait a moment and try again.';
+      userMessage = 'ó Too many requests. Please wait a moment and try again.';
     } else if (error.response?.status >= 400 && error.response?.status < 500) {
       userMessage = '  There was an issue with your request. Please check your input and try again.';
       shouldRetry = false;
