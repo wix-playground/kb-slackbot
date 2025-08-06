@@ -31,25 +31,20 @@ const priorityOptions = [
   'Low'
 ];
 
-// Language options for New Features
+// Language options for New Features (simplified)
 const languageOptions = [
   'English only',
-  'English + Spanish',
-  'English + Portuguese', 
-  'English + Japanese',
-  'All languages',
-  'Other (specify in description)'
+  'Multiple languages',
+  'Will specify later'
 ];
 
-// Updated step flow constants
+// Updated step flow constants (simplified)
 const STEPS = {
   START: 'start',
   TASK_TYPE: 'task_type',
   PRIORITY: 'priority',
   PRODUCT: 'product',
-  CONDITIONAL: 'conditional',
-  SUPPORTING_MATERIALS: 'supporting_materials',
-  FILES: 'files',
+  DESCRIPTION: 'description',
   SUBMIT: 'submit'
 };
 
@@ -68,7 +63,7 @@ async function sendStepMessage(client, channel, text, blocks = []) {
   });
 }
 
-// Step 1: Start KB request flow (no step numbers)
+// Step 1: Start KB request flow
 async function startKBRequest(args) {
   const { client, command, ack } = args;
   
@@ -88,10 +83,10 @@ async function startKBRequest(args) {
     await sendStepMessage(
       client,
       channel.id,
-      `<¯ Hi! I'll help you create a KB request. What's the subject of your request?`,
+      `<¯ Hi! I'll help you create a KB request.\n\nWhat's your request about?`,
       [{
         type: 'section',
-        text: { type: 'mrkdwn', text: '=Ý Please describe your request in 1-2 sentences (e.g., "Adding Products to Wix Stores article needs update"):' }
+        text: { type: 'mrkdwn', text: '=¬ Brief summary (e.g. "Update pricing page for new plans"):' }
       }]
     );
 
@@ -120,13 +115,6 @@ async function handleSubjectAndTaskType(args) {
       event.channel,
       `What type of task is this?`,
       [{
-        type: 'section',
-        text: { 
-          type: 'mrkdwn', 
-          text: 'Select an option:\n" **Quick Update:** Small changes such as fixing typos, adding notes\n" **Content Edit:** Major changes to articles or new articles for existing features\n" **New Feature:** Articles for a new feature\n" **Create new Feature Request:** Creating a Feature Request\n" **Launch Feature Request:** Resolving an existing Feature Request'
-        }
-      },
-      {
         type: 'actions',
         elements: [{
           type: 'static_select',
@@ -163,12 +151,8 @@ async function handleTaskTypeSelection(args) {
     await sendStepMessage(
       client,
       body.channel.id,
-      ` Task type: **${taskType}**\n\nWhat's the requested priority for this task?`,
+      `What's the priority?`,
       [{
-        type: 'section',
-        text: { type: 'mrkdwn', text: 'ð *Note:* An estimated due date will be assigned automatically for all Non-New Feature requests. For New Features, please include the tentative Release Date in the description.' }
-      },
-      {
         type: 'actions',
         elements: [{
           type: 'static_select',
@@ -205,26 +189,26 @@ async function handlePrioritySelection(args) {
     await sendStepMessage(
       client,
       body.channel.id,
-      ` Priority: **${priority}**\n\nWhich Wix product is this related to?`,
+      `Which product?`,
       [{
         type: 'section',
-        text: { type: 'mrkdwn', text: '<÷ Start typing the product name (e.g., Editor, Stores, Blog, Bookings, etc.):' }
+        text: { type: 'mrkdwn', text: '<÷ Just the product name (e.g. Stores, Editor, Blog):' }
       }]
     );
 
     sessionManager.updateSession(body.user.id, { 
-      step: STEPS.CONDITIONAL,
+      step: STEPS.DESCRIPTION,
       data: session.data 
     });
   }, sessionManager, client);
 }
 
-// Step 5: Handle product and ask conditional questions based on task type
-async function handleProductAndConditional(args) {
+// Step 5: Handle product and ask for description
+async function handleProductAndDescription(args) {
   const { client, event } = args;
   const session = sessionManager.getSession(event.user);
 
-  if (!session || session.step !== STEPS.CONDITIONAL) return;
+  if (!session || session.step !== STEPS.DESCRIPTION) return;
 
   await errorHandler.withSessionErrorHandling(event.user, async () => {
     // Validate and store product
@@ -235,197 +219,75 @@ async function handleProductAndConditional(args) {
 
     session.data.product = product;
 
-    // Ask conditional questions based on task type
+    // Ask for details based on task type with simplified prompts
     const taskType = session.data.taskType;
-    
+    let promptText;
+
     if (taskType === 'New Feature') {
-      await handleNewFeatureQuestions(client, event.channel, session);
+      promptText = `Tell me more about this new feature:
+
+=¡ What's the feature?
+=Å Release date/status?
+< Languages needed?`;
     } else if (taskType === 'Content Edit') {
-      await handleContentEditQuestions(client, event.channel, session);
+      promptText = `Tell me about the changes needed:
+
+ What needs updating?
+= Any specific articles?`;
     } else if (taskType === 'Launch Feature Request') {
-      await handleLaunchFRQuestions(client, event.channel, session);
+      promptText = `About this feature launch:
+
+= Link to existing Feature Request?
+ Confirmed live for 100% EN users?`;
     } else if (taskType === 'Create new Feature Request') {
-      await handleCreateFRQuestions(client, event.channel, session);
+      promptText = `About this new feature request:
+
+=¡ What feature do you need?
+=Ë Why is it needed?`;
     } else { // Quick Update
-      await handleQuickUpdateQuestions(client, event.channel, session);
+      promptText = `What needs to be updated:
+
+¡ What specific changes?
+=Í Which articles/sections?`;
     }
-
-    sessionManager.updateSession(event.user, { 
-      step: STEPS.SUPPORTING_MATERIALS,
-      data: session.data 
-    });
-  }, sessionManager, client);
-}
-
-// Conditional question handlers
-async function handleNewFeatureQuestions(client, channel, session) {
-  await sendStepMessage(
-    client,
-    channel,
-    ` Product: **${session.data.product}**\n\n=Ë **For New Features, I need additional information:**`,
-    [{
-      type: 'section',
-      text: { 
-        type: 'mrkdwn', 
-        text: '**Please provide details for each:**\n\n1. **Product Documentation:** Do you have product decks, Figma files, or product specs? (Please describe or provide links)\n\n2. **Release Status:** Features need to be at least 50% rollout for EN users before we can publish articles\n\n3. **Languages:** Which languages should this feature support?\n\n4. **Release Date:** What\'s the tentative release date?\n\n=Ý Please provide all this information in your response:' 
-      }
-    },
-    {
-      type: 'actions',
-      elements: [{
-        type: 'static_select',
-        placeholder: { type: 'plain_text', text: 'Select languages...' },
-        action_id: 'select_languages',
-        options: languageOptions.map(lang => ({
-          text: { type: 'plain_text', text: lang },
-          value: lang
-        }))
-      }]
-    }]
-  );
-}
-
-async function handleContentEditQuestions(client, channel, session) {
-  await sendStepMessage(
-    client,
-    channel,
-    ` Product: **${session.data.product}**\n\n **For Content Edits, I need:**`,
-    [{
-      type: 'section',
-      text: { 
-        type: 'mrkdwn', 
-        text: '**Please provide details for:**\n\n1. **Specific Changes:** What exactly needs to be updated or changed?\n\n2. **Article Links:** Do you have links to specific articles that need updating? (if known)\n\n3. **Reason for Change:** Why is this update needed? (new feature, bug fix, policy change, etc.)\n\n=Ý Please provide all this information in your response:' 
-      }
-    }]
-  );
-}
-
-async function handleLaunchFRQuestions(client, channel, session) {
-  await sendStepMessage(
-    client,
-    channel,
-    ` Product: **${session.data.product}**\n\n=€ **For Launching Feature Requests:**`,
-    [{
-      type: 'section',
-      text: { 
-        type: 'mrkdwn', 
-        text: '  **Important:** We only launch Feature Requests when features are out to 100% of all EN users.\n\n**Please provide:**\n\n1. **Existing FR Link:** Link to the existing Feature Request that needs to be resolved\n\n2. **Release Confirmation:** Please confirm this feature is now live for 100% of EN users\n\n3. **Final Changes:** Any updates or changes since the original Feature Request was created?\n\n=Ý Please provide all this information in your response:' 
-      }
-    }]
-  );
-}
-
-async function handleCreateFRQuestions(client, channel, session) {
-  await sendStepMessage(
-    client,
-    channel,
-    ` Product: **${session.data.product}**\n\n=Ë **For Creating new Feature Requests:**`,
-    [{
-      type: 'section',
-      text: { 
-        type: 'mrkdwn', 
-        text: '**Please provide detailed information for:**\n\n1. **Feature Description:** What is the new feature being requested?\n\n2. **Use Case:** Why is this feature needed? Who will benefit?\n\n3. **Requirements:** Any specific requirements or specifications?\n\n4. **Timeline:** When is this feature expected to be needed?\n\n=Ý Please provide all this information in your response:' 
-      }
-    }]
-  );
-}
-
-async function handleQuickUpdateQuestions(client, channel, session) {
-  await sendStepMessage(
-    client,
-    channel,
-    ` Product: **${session.data.product}**\n\n¡ **Quick Update Details:**`,
-    [{
-      type: 'section',
-      text: { 
-        type: 'mrkdwn', 
-        text: '**Please describe:**\n\n1. **What needs to be changed:** Specific text, links, or content to update\n\n2. **Location:** Which article(s) or section(s) need the update\n\n3. **Reason:** Why is this change needed?\n\n=Ý Please provide all this information in your response:' 
-      }
-    }]
-  );
-}
-
-// Handle language selection for New Features
-async function handleLanguageSelection(args) {
-  const { client, body, ack } = args;
-  const session = sessionManager.getSession(body.user.id);
-
-  await ack();
-  
-  const languages = body.actions[0].selected_option.value;
-  session.data.languages = languages;
-
-  await client.chat.postMessage({
-    channel: body.channel.id,
-    text: ` Languages: **${languages}**\n\nNow please provide the detailed information requested above.`
-  });
-
-  sessionManager.updateSession(body.user.id, { data: session.data });
-}
-
-// Step 6: Handle conditional responses and ask for supporting materials
-async function handleConditionalAndSupportingMaterials(args) {
-  const { client, event } = args;
-  const session = sessionManager.getSession(event.user);
-
-  if (!session || session.step !== STEPS.SUPPORTING_MATERIALS) return;
-
-  await errorHandler.withSessionErrorHandling(event.user, async () => {
-    // Store the conditional response
-    const conditionalInfo = validators.validateText(event.text, 'Additional Details', { 
-      minLength: 10, 
-      maxLength: 5000 
-    });
-
-    session.data.conditionalInfo = conditionalInfo;
 
     await sendStepMessage(
       client,
       event.channel,
-      `Any additional supporting materials, context, or files?`,
-      [{
-        type: 'section',
-        text: { 
-          type: 'mrkdwn', 
-          text: '=Î You can upload files (screenshots, documents, specs) and/or provide additional context.\n\nType "none" if you don\'t have additional materials, or provide any extra context needed:' 
-        }
-      }]
+      promptText
     );
 
     sessionManager.updateSession(event.user, { 
-      step: STEPS.FILES,
+      step: STEPS.SUBMIT,
       data: session.data 
     });
   }, sessionManager, client);
 }
 
-// Step 7: Handle supporting materials and show submit option  
-async function handleSupportingMaterialsAndFiles(args) {
+// Step 6: Handle description and show submit
+async function handleDescriptionAndSubmit(args) {
   const { client, event } = args;
   const session = sessionManager.getSession(event.user);
 
-  if (!session || session.step !== STEPS.FILES) return;
+  if (!session || session.step !== STEPS.SUBMIT) return;
 
   await errorHandler.withSessionErrorHandling(event.user, async () => {
-    // Store supporting materials
-    let supportingMaterials = '';
-    if (event.text.toLowerCase() !== 'none') {
-      supportingMaterials = validators.validateText(event.text, 'Supporting Materials', { 
-        required: false,
-        maxLength: 2000 
-      });
-    }
+    // Store the description
+    const description = validators.validateText(event.text, 'Description', { 
+      minLength: 10, 
+      maxLength: 5000 
+    });
 
-    session.data.supportingMaterials = supportingMaterials;
+    session.data.description = description;
     session.data.files = session.data.files || [];
 
     await sendStepMessage(
       client,
       event.channel,
-      `<¯ Ready to submit your KB request!`,
+      `<¯ Ready to submit!`,
       [{
         type: 'section',
-        text: { type: 'mrkdwn', text: '=Î Upload any additional files or submit your request now:' }
+        text: { type: 'mrkdwn', text: '=Î Add files or submit now:' }
       },
       {
         type: 'actions',
@@ -438,10 +300,8 @@ async function handleSupportingMaterialsAndFiles(args) {
       }]
     );
 
-    sessionManager.updateSession(event.user, { 
-      step: STEPS.SUBMIT,
-      data: session.data 
-    });
+    // Keep in submit step for file uploads
+    sessionManager.updateSession(event.user, { data: session.data });
   }, sessionManager, client);
 }
 
@@ -462,7 +322,7 @@ async function handleFileUpload(args) {
 
       await client.chat.postMessage({
         channel: event.channel,
-        text: ` Added ${event.files.length} file(s). Upload more files or submit your request:`,
+        text: ` Added ${event.files.length} file(s)`,
         blocks: [{
           type: 'actions',
           elements: [{
@@ -491,7 +351,7 @@ async function handleSubmission(args) {
 
     await client.chat.postMessage({
       channel: body.channel.id,
-      text: 'ó Processing your KB request...'
+      text: 'ó Submitting...'
     });
 
     // Add user info to the request data
@@ -518,7 +378,7 @@ async function handleSubmission(args) {
 
     await client.chat.postMessage({
       channel: body.channel.id,
-      text: '<‰ KB Request Submitted Successfully!',
+      text: '<‰ KB Request Submitted!',
       blocks: [
         {
           "type": "header",
@@ -531,7 +391,7 @@ async function handleSubmission(args) {
           "type": "section",
           "text": {
             "type": "mrkdwn",
-            "text": ` **${session.data.subject}** has been submitted to the KB team.`
+            "text": `**${session.data.subject}**`
           }
         },
         {
@@ -539,19 +399,11 @@ async function handleSubmission(args) {
           "fields": [
             {
               "type": "mrkdwn",
-              "text": `*Type:*\n${session.data.taskType}`
+              "text": `*Type:* ${session.data.taskType}`
             },
             {
               "type": "mrkdwn", 
-              "text": `*Priority:*\n${session.data.priority}`
-            },
-            {
-              "type": "mrkdwn",
-              "text": `*Product:*\n${session.data.product}`
-            },
-            {
-              "type": "mrkdwn", 
-              "text": `*Files:*\n${session.data.files?.length || 0} attached`
+              "text": `*Priority:* ${session.data.priority}`
             }
           ]
         },
@@ -600,20 +452,19 @@ app.event('message', errorHandler.wrapSlackHandler(async (args) => {
   switch (session.step) {
     case STEPS.TASK_TYPE:
       return handleSubjectAndTaskType(args);
-    case STEPS.CONDITIONAL:
-      return handleProductAndConditional(args);
-    case STEPS.SUPPORTING_MATERIALS:
-      return handleConditionalAndSupportingMaterials(args);
-    case STEPS.FILES:
-      return handleSupportingMaterialsAndFiles(args);
+    case STEPS.DESCRIPTION:
+      return handleProductAndDescription(args);
     case STEPS.SUBMIT:
-      return handleFileUpload(args);
+      if (event.files && event.files.length > 0) {
+        return handleFileUpload(args);
+      } else {
+        return handleDescriptionAndSubmit(args);
+      }
   }
 }));
 
 app.action('select_task_type', errorHandler.wrapSlackHandler(handleTaskTypeSelection));
 app.action('select_priority', errorHandler.wrapSlackHandler(handlePrioritySelection));
-app.action('select_languages', errorHandler.wrapSlackHandler(handleLanguageSelection));
 app.action('submit_kb_request', errorHandler.wrapSlackHandler(handleSubmission));
 app.action('retry_action', errorHandler.wrapSlackHandler(startKBRequest));
 
@@ -635,7 +486,7 @@ app.action('start_another_request', async ({ ack, body, client }) => {
       type: 'section',
       text: { 
         type: 'mrkdwn', 
-        text: 'What\'s the subject of your new request?\n\n=Ý Please describe your request in 1-2 sentences:' 
+        text: 'What\'s your request about?\n\n=¬ Brief summary:' 
       }
     }]
   });
