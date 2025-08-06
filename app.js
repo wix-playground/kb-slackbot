@@ -71,7 +71,7 @@ async function startKBRequest(args) {
     await sendStepMessage(
       client,
       channel.id,
-      `=K Hi! I'll help you create a KB request. Let's start!\n\n*Step 1 of 6:* What's the subject of your request?`,
+      `<¯ Hi! I'll help you create a KB request. Let's start!\n\n*Step 1 of 6:* What's the subject of your request?`,
       [{
         type: 'section',
         text: { type: 'mrkdwn', text: '=Ý Please describe your request in 1-2 sentences:' }
@@ -142,7 +142,7 @@ async function handleTaskTypeSelection(args) {
       ` Task type: **${taskType}**\n\n*Step 3 of 6:* Which product is this related to?`,
       [{
         type: 'section',
-        text: { type: 'mrkdwn', text: '<¯ Please specify the Wix product (e.g., Editor, Stores, Blog, etc.):' }
+        text: { type: 'mrkdwn', text: '<÷ Please specify the Wix product (e.g., Editor, Stores, Blog, etc.):' }
       }]
     );
 
@@ -177,7 +177,7 @@ async function handleProductAndDescription(args) {
         type: 'section',
         text: { 
           type: 'mrkdwn', 
-          text: '=Ë Include:\n" What needs to be changed or added?\n" Why is this needed?\n" Any specific requirements or context' 
+          text: '=Ý Include:\n" What needs to be changed or added?\n" Why is this needed?\n" Any specific requirements or context' 
         }
       }]
     );
@@ -252,7 +252,7 @@ async function handleKBUrlsAndSupportingMaterials(args) {
         type: 'section',
         text: { 
           type: 'mrkdwn', 
-          text: '=Î Please provide any additional context, or type "none" if not applicable.\n\nAfter this, you can also upload files if needed.' 
+          text: '=Ý Please provide any additional context, or type "none" if not applicable.\n\nAfter this, you can also upload files if needed.' 
         }
       }]
     );
@@ -379,14 +379,58 @@ async function handleSubmission(args) {
 
     await client.chat.postMessage({
       channel: body.channel.id,
-      text: ' *KB Request Submitted Successfully!*',
-      blocks: [{
-        type: 'section',
-        text: {
-          type: 'mrkdwn',
-          text: ` *KB Request Submitted Successfully!*\n\n=Ë *Request:* ${session.data.subject}\n<÷ *Type:* ${session.data.taskType}\n<¯ *Product:* ${session.data.product}\n\n= *View on Monday.com:* <${mondayItem.url}|Open Request>`
+      text: '<‰ KB Request Submitted Successfully!',
+      blocks: [
+        {
+          "type": "header",
+          "text": {
+            "type": "plain_text",
+            "text": "<‰ Request Submitted!"
+          }
+        },
+        {
+          "type": "section",
+          "text": {
+            "type": "mrkdwn",
+            "text": ` **${session.data.subject}** has been submitted to the KB team.`
+          }
+        },
+        {
+          "type": "section",
+          "fields": [
+            {
+              "type": "mrkdwn",
+              "text": `*Type:*\n${session.data.taskType}`
+            },
+            {
+              "type": "mrkdwn", 
+              "text": `*Product:*\n${session.data.product}`
+            }
+          ]
+        },
+        {
+          "type": "actions",
+          "elements": [
+            {
+              "type": "button",
+              "text": {
+                "type": "plain_text",
+                "text": "=Ê View on Monday.com"
+              },
+              "url": mondayItem.url,
+              "style": "primary"
+            },
+            {
+              "type": "button",
+              "text": {
+                "type": "plain_text",
+                "text": "• Submit Another"
+              },
+              "action_id": "start_another_request"
+            }
+          ]
         }
-      }]
+      ]
     });
 
     // Clean up session
@@ -426,6 +470,32 @@ app.action('select_task_type', errorHandler.wrapSlackHandler(handleTaskTypeSelec
 app.action('submit_kb_request', errorHandler.wrapSlackHandler(handleSubmission));
 app.action('retry_action', errorHandler.wrapSlackHandler(startKBRequest));
 
+// NEW: Handle "Submit Another Request" button
+app.action('start_another_request', async ({ ack, body, client }) => {
+  await ack();
+  
+  // Restart the flow
+  sessionManager.createSession(body.user.id, {
+    step: STEPS.START,
+    channel: body.channel.id,
+    data: {}
+  });
+
+  await client.chat.postMessage({
+    channel: body.channel.id,
+    text: "<¯ Let's create another KB request!",
+    blocks: [{
+      type: 'section',
+      text: { 
+        type: 'mrkdwn', 
+        text: '*Step 1 of 6:* What\'s the subject of your new request?\n\n=Ý Please describe your request in 1-2 sentences:' 
+      }
+    }]
+  });
+
+  sessionManager.updateSession(body.user.id, { step: STEPS.TASK_TYPE });
+});
+
 // Health check endpoint
 app.event('app_mention', async ({ event, client, say }) => {
   if (event.text.includes('health')) {
@@ -434,7 +504,7 @@ app.event('app_mention', async ({ event, client, say }) => {
       const workflowHealth = await workflowHandler.healthCheck();
       const sessionCount = sessionManager.getActiveSessionCount();
 
-      await say(`<å *Health Status:*\n" Monday.com: ${mondayHealth.status}\n" AI Workflow: ${workflowHealth.status}\n" Active Sessions: ${sessionCount}`);
+      await say(`= *Health Status:*\n" Monday.com: ${mondayHealth.status}\n" AI Workflow: ${workflowHealth.status}\n" Active Sessions: ${sessionCount}`);
     } catch (error) {
       await say('L Health check failed');
     }
@@ -464,7 +534,7 @@ server.get('/health', async (req, res) => {
 });
 
 server.listen(process.env.PORT || 3000, () => {
-  console.log(`< Listening on port ${process.env.PORT || 3000}`);
+  console.log(`=€ Listening on port ${process.env.PORT || 3000}`);
 });
 
 // Start the app
