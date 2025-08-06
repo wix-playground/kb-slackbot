@@ -13,7 +13,7 @@ async function handleSlackEvent(event) {
   });
 
   console.log('Workflow response:', workflowResponse);
-  
+
   // Step 2: Parse outputs
   const {
     request_type,
@@ -37,20 +37,26 @@ async function handleSlackEvent(event) {
 
 async function runModelHubWorkflow(inputs) {
   const url = process.env.WORKFLOW_URL;
+  const token = process.env.MODEL_HUB_TOKEN;
 
-  const res = await axios.post(
-    url,
-    { inputs },
-    {
-      headers: {
-        'Content-Type': 'application/json'
-        // 🔥 Removed broken reference to `token`
-        // No token is needed if you're using a Falcon/Serverless proxy
-      }
-    }
-  );
-
-  return res.data.outputs; // ✅ This matches your modelhub.js structure
+  try {
+    const res = await axios.post(
+      url,
+      { inputs },
+      { headers: { Authorization: `Bearer ${token}` } }
+    );
+    return res.data.result;
+  } catch (err) {
+    console.error('❌ Model Hub workflow failed:', err.message);
+    return {
+      request_type: 'Unknown',
+      change_description: 'Unable to process request due to workflow error.',
+      figma_link: '—',
+      jira_link: '—',
+      urgency_level: 'Not specified',
+      feature_name: 'N/A'
+    };
+  }
 }
 
 module.exports = { handleSlackEvent };
