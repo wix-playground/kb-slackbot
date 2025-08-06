@@ -82,8 +82,9 @@ const createMondayItem = async ({ articleLink, requestType, description, user, f
       console.error(`Failed to attach file ${slackFileId}:`, err.message);
     }
   }
+const boardUrl = `https://wix.monday.com/boards/${MONDAY_BOARD_ID}/pulses/${itemId}`;
+return boardUrl;
 
-  return itemId;
 };
 
 module.exports = { createMondayItem };
