@@ -164,7 +164,7 @@ app.action('submit_kb_request', async ({ ack, body, client }) => {
     slack_user: user
   });
 
-  const mondayBoardUrl = `https://wix.monday.com/boards/9610768130/pulses/${itemId}`;
+  const mondayBoardUrl = `https://wix.monday.com/boards/${process.env.MONDAY_BOARD_ID}/pulses/${itemId}`;
 
   await client.views.open({
     trigger_id: body.trigger_id,
