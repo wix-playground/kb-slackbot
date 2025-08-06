@@ -12,6 +12,8 @@ async function handleSlackEvent(event) {
     user_id: user
   });
 
+  console.log('Workflow response:', workflowResponse);
+  
   // Step 2: Parse outputs
   const {
     request_type,
