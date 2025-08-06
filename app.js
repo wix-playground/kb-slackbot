@@ -1,211 +1,479 @@
 require('dotenv').config();
 const { App } = require('@slack/bolt');
 const express = require('express');
-const { createMondayItem } = require('./monday');
-const { runWorkflow } = require('./handlers/modelhub');
+const sessionManager = require('./utils/sessionManager');
+const errorHandler = require('./utils/errorHandler');
+const { validators, ValidationError } = require('./utils/validator');
+const workflowHandler = require('./handlers/workflowHandler');
+const mondayAPI = require('./monday');
 
+// Initialize the app
 const app = new App({
   token: process.env.SLACK_BOT_TOKEN,
   appToken: process.env.SLACK_APP_TOKEN,
   socketMode: true,
+  logLevel: 'INFO'
 });
 
-const sessions = {};
+// Task type options for the dropdown
+const taskTypeOptions = [
+  'New Feature',
+  'Content Update',
+  'Feature Request', 
+  'Content Flag',
+  'Content Edit'
+];
 
-app.command('/kb-request', async ({ command, ack, client }) => {
-  await ack();
-  const { channel } = await client.conversations.open({ users: command.user_id });
-  sessions[command.user_id] = { step: 1, data: {} };
+// Step flow constants
+const STEPS = {
+  START: 'start',
+  TASK_TYPE: 'task_type',
+  PRODUCT: 'product',
+  DESCRIPTION: 'description',
+  KB_URLS: 'kb_urls',
+  SUPPORTING_MATERIALS: 'supporting_materials',
+  FILES: 'files',
+  SUBMIT: 'submit'
+};
+
+// Reusable function to send interactive messages
+async function sendStepMessage(client, channel, text, blocks = []) {
   await client.chat.postMessage({
     channel,
-    text: '📝 What’s the **Subject** for your KB request?',
+    text,
+    blocks: [
+      {
+        type: 'section',
+        text: { type: 'mrkdwn', text }
+      },
+      ...blocks
+    ]
   });
-});
+}
 
-app.event('message', async ({ event, client }) => {
-  if (event.channel_type !== 'im' || event.bot_id) return;
+// Step 1: Start KB request flow
+async function startKBRequest(args) {
+  const { client, command, ack } = args;
+  
+  await errorHandler.withSessionErrorHandling(command.user_id, async () => {
+    await ack();
 
-  const user = event.user;
-  const session = sessions[user];
+    // Open DM channel
+    const { channel } = await client.conversations.open({ users: command.user_id });
+
+    // Create new session
+    sessionManager.createSession(command.user_id, {
+      step: STEPS.START,
+      channel: channel.id,
+      data: {}
+    });
+
+    await sendStepMessage(
+      client,
+      channel.id,
+      `=K Hi! I'll help you create a KB request. Let's start!\n\n*Step 1 of 6:* What's the subject of your request?`,
+      [{
+        type: 'section',
+        text: { type: 'mrkdwn', text: '=� Please describe your request in 1-2 sentences:' }
+      }]
+    );
+
+    sessionManager.updateSession(command.user_id, { step: STEPS.TASK_TYPE });
+  }, sessionManager, client);
+}
+
+// Step 2: Handle subject and ask for task type
+async function handleSubjectAndTaskType(args) {
+  const { client, event } = args;
+  const session = sessionManager.getSession(event.user);
+
+  if (!session || session.step !== STEPS.TASK_TYPE) return;
+
+  await errorHandler.withSessionErrorHandling(event.user, async () => {
+    // Validate and store subject
+    const subject = validators.validateText(event.text, 'Subject', { 
+      minLength: 3, 
+      maxLength: 200 
+    });
+
+    session.data.subject = subject;
+
+    await sendStepMessage(
+      client,
+      event.channel,
+      `*Step 2 of 6:* What type of task is this?`,
+      [{
+        type: 'actions',
+        elements: [{
+          type: 'static_select',
+          placeholder: { type: 'plain_text', text: 'Select task type...' },
+          action_id: 'select_task_type',
+          options: taskTypeOptions.map(type => ({
+            text: { type: 'plain_text', text: type },
+            value: type
+          }))
+        }]
+      }]
+    );
+
+    sessionManager.updateSession(event.user, { 
+      step: STEPS.PRODUCT,
+      data: session.data 
+    });
+  }, sessionManager, client);
+}
+
+// Handle task type selection
+async function handleTaskTypeSelection(args) {
+  const { client, body, ack } = args;
+  const session = sessionManager.getSession(body.user.id);
+
+  if (!session || session.step !== STEPS.PRODUCT) return;
+
+  await errorHandler.withSessionErrorHandling(body.user.id, async () => {
+    await ack();
+
+    const taskType = validators.validateTaskType(body.actions[0].selected_option.value);
+    session.data.taskType = taskType;
+
+    await sendStepMessage(
+      client,
+      body.channel.id,
+      ` Task type: **${taskType}**\n\n*Step 3 of 6:* Which product is this related to?`,
+      [{
+        type: 'section',
+        text: { type: 'mrkdwn', text: '<� Please specify the Wix product (e.g., Editor, Stores, Blog, etc.):' }
+      }]
+    );
+
+    sessionManager.updateSession(body.user.id, { 
+      step: STEPS.DESCRIPTION,
+      data: session.data 
+    });
+  }, sessionManager, client);
+}
+
+// Step 3: Handle product and ask for description
+async function handleProductAndDescription(args) {
+  const { client, event } = args;
+  const session = sessionManager.getSession(event.user);
+
+  if (!session || session.step !== STEPS.DESCRIPTION) return;
+
+  await errorHandler.withSessionErrorHandling(event.user, async () => {
+    // Validate and store product
+    const product = validators.validateText(event.text, 'Product', { 
+      minLength: 2, 
+      maxLength: 100 
+    });
+
+    session.data.product = product;
+
+    await sendStepMessage(
+      client,
+      event.channel,
+      ` Product: **${product}**\n\n*Step 4 of 6:* Please provide a detailed description of your request.`,
+      [{
+        type: 'section',
+        text: { 
+          type: 'mrkdwn', 
+          text: '=� Include:\n" What needs to be changed or added?\n" Why is this needed?\n" Any specific requirements or context' 
+        }
+      }]
+    );
+
+    sessionManager.updateSession(event.user, { 
+      step: STEPS.KB_URLS,
+      data: session.data 
+    });
+  }, sessionManager, client);
+}
+
+// Step 4: Handle description and ask for KB URLs
+async function handleDescriptionAndKBUrls(args) {
+  const { client, event } = args;
+  const session = sessionManager.getSession(event.user);
+
+  if (!session || session.step !== STEPS.KB_URLS) return;
+
+  await errorHandler.withSessionErrorHandling(event.user, async () => {
+    // Validate and store description
+    const description = validators.validateText(event.text, 'Description', { 
+      minLength: 10, 
+      maxLength: 5000 
+    });
+
+    session.data.description = description;
+
+    await sendStepMessage(
+      client,
+      event.channel,
+      `*Step 5 of 6:* Do you have any relevant KB article URLs?`,
+      [{
+        type: 'section',
+        text: { 
+          type: 'mrkdwn', 
+          text: '= Please provide URLs of related KB articles, or type "none" if not applicable:' 
+        }
+      }]
+    );
+
+    sessionManager.updateSession(event.user, { 
+      step: STEPS.SUPPORTING_MATERIALS,
+      data: session.data 
+    });
+  }, sessionManager, client);
+}
+
+// Step 5: Handle KB URLs and ask for supporting materials
+async function handleKBUrlsAndSupportingMaterials(args) {
+  const { client, event } = args;
+  const session = sessionManager.getSession(event.user);
+
+  if (!session || session.step !== STEPS.SUPPORTING_MATERIALS) return;
+
+  await errorHandler.withSessionErrorHandling(event.user, async () => {
+    // Validate and store KB URLs (optional)
+    let kbUrls = '';
+    if (event.text.toLowerCase() !== 'none') {
+      kbUrls = validators.validateText(event.text, 'KB URLs', { 
+        required: false,
+        maxLength: 2000 
+      });
+    }
+
+    session.data.kbUrls = kbUrls;
+
+    await sendStepMessage(
+      client,
+      event.channel,
+      `*Step 6 of 6:* Any additional supporting materials or context?`,
+      [{
+        type: 'section',
+        text: { 
+          type: 'mrkdwn', 
+          text: '=� Please provide any additional context, or type "none" if not applicable.\n\nAfter this, you can also upload files if needed.' 
+        }
+      }]
+    );
+
+    sessionManager.updateSession(event.user, { 
+      step: STEPS.FILES,
+      data: session.data 
+    });
+  }, sessionManager, client);
+}
+
+// Step 6: Handle supporting materials and ask for files
+async function handleSupportingMaterialsAndFiles(args) {
+  const { client, event } = args;
+  const session = sessionManager.getSession(event.user);
+
+  if (!session || session.step !== STEPS.FILES) return;
+
+  await errorHandler.withSessionErrorHandling(event.user, async () => {
+    // Validate and store supporting materials (optional)
+    let supportingMaterials = '';
+    if (event.text.toLowerCase() !== 'none') {
+      supportingMaterials = validators.validateText(event.text, 'Supporting Materials', { 
+        required: false,
+        maxLength: 2000 
+      });
+    }
+
+    session.data.supportingMaterials = supportingMaterials;
+    session.data.files = session.data.files || [];
+
+    await sendStepMessage(
+      client,
+      event.channel,
+      `=� *Optional:* Upload any files (screenshots, documents, etc.) or click "Submit" to finish.`,
+      [{
+        type: 'actions',
+        elements: [{
+          type: 'button',
+          text: { type: 'plain_text', text: 'Submit Request' },
+          action_id: 'submit_kb_request',
+          style: 'primary'
+        }]
+      }]
+    );
+
+    sessionManager.updateSession(event.user, { 
+      step: STEPS.SUBMIT,
+      data: session.data 
+    });
+  }, sessionManager, client);
+}
+
+// Handle file uploads
+async function handleFileUpload(args) {
+  const { client, event } = args;
+  const session = sessionManager.getSession(event.user);
+
+  if (!session || session.step !== STEPS.SUBMIT) return;
+
+  await errorHandler.withSessionErrorHandling(event.user, async () => {
+    if (event.files && event.files.length > 0) {
+      // Validate files
+      const fileIds = validators.validateFiles(event.files.map(f => f.id));
+      
+      session.data.files = session.data.files || [];
+      session.data.files.push(...fileIds);
+
+      await client.chat.postMessage({
+        channel: event.channel,
+        text: ` Added ${event.files.length} file(s). Upload more files or click "Submit Request" to finish.`,
+        blocks: [{
+          type: 'actions',
+          elements: [{
+            type: 'button',
+            text: { type: 'plain_text', text: 'Submit Request' },
+            action_id: 'submit_kb_request',
+            style: 'primary'
+          }]
+        }]
+      });
+
+      sessionManager.updateSession(event.user, { data: session.data });
+    }
+  }, sessionManager, client);
+}
+
+// Handle final submission
+async function handleSubmission(args) {
+  const { client, body, ack } = args;
+  const session = sessionManager.getSession(body.user.id);
+
+  if (!session || session.step !== STEPS.SUBMIT) return;
+
+  await errorHandler.withSessionErrorHandling(body.user.id, async () => {
+    await ack();
+
+    await client.chat.postMessage({
+      channel: body.channel.id,
+      text: '� Processing your KB request...'
+    });
+
+    // Add user info to the request data
+    session.data.slackUser = body.user.id;
+
+    // Process through AI workflow and create Monday.com item
+    const processedData = await workflowHandler.processKBRequestWorkflow(
+      session.data, 
+      body.user.id
+    );
+
+    const mondayItem = await mondayAPI.createKBRequest(processedData);
+
+    // Upload files if any
+    if (session.data.files && session.data.files.length > 0) {
+      for (const fileId of session.data.files) {
+        try {
+          await mondayAPI.uploadFile(mondayItem.id, `file-${fileId}`, client, fileId);
+        } catch (error) {
+          console.warn(`Failed to upload file ${fileId}:`, error.message);
+        }
+      }
+    }
+
+    await client.chat.postMessage({
+      channel: body.channel.id,
+      text: ' *KB Request Submitted Successfully!*',
+      blocks: [{
+        type: 'section',
+        text: {
+          type: 'mrkdwn',
+          text: ` *KB Request Submitted Successfully!*\n\n=� *Request:* ${session.data.subject}\n<� *Type:* ${session.data.taskType}\n<� *Product:* ${session.data.product}\n\n= *View on Monday.com:* <${mondayItem.url}|Open Request>`
+        }
+      }]
+    });
+
+    // Clean up session
+    sessionManager.cleanupSession(body.user.id);
+  }, sessionManager, client);
+}
+
+// Register all handlers with error wrapping
+app.command('/kb-request', errorHandler.wrapSlackHandler(startKBRequest));
+
+app.event('message', errorHandler.wrapSlackHandler(async (args) => {
+  const { event } = args;
+  
+  // Only process DM messages and ignore bot messages
+  if (event.channel_type !== 'im' || event.bot_id || event.subtype) return;
+  
+  const session = sessionManager.getSession(event.user);
   if (!session) return;
 
-  try {
-    const text = (event.text || '').trim();
-    const files = event.files || [];
+  switch (session.step) {
+    case STEPS.TASK_TYPE:
+      return handleSubjectAndTaskType(args);
+    case STEPS.DESCRIPTION:
+      return handleProductAndDescription(args);
+    case STEPS.KB_URLS:
+      return handleDescriptionAndKBUrls(args);
+    case STEPS.SUPPORTING_MATERIALS:
+      return handleKBUrlsAndSupportingMaterials(args);
+    case STEPS.FILES:
+      return handleSupportingMaterialsAndFiles(args);
+    case STEPS.SUBMIT:
+      return handleFileUpload(args);
+  }
+}));
 
-    switch (session.step) {
-      case 1:
-        session.data.subject = text;
-        session.step = 2;
-        return client.chat.postMessage({
-          channel: event.channel,
-          text: '🛠️ What’s the **Task Type**?',
-          blocks: [{
-            type: 'section',
-            text: { type: 'mrkdwn', text: '🛠️ What’s the **Task Type**?' },
-            accessory: {
-              type: 'static_select',
-              action_id: 'task_type_select',
-              placeholder: { type: 'plain_text', text: 'Select a task type' },
-              options: [
-                { text: { type: 'plain_text', text: 'New Feature' }, value: 'New Feature' },
-                { text: { type: 'plain_text', text: 'Content Update' }, value: 'Content Update' },
-                { text: { type: 'plain_text', text: 'Feature Request' }, value: 'Feature Request' },
-                { text: { type: 'plain_text', text: 'Content Flag' }, value: 'Content Flag' },
-                { text: { type: 'plain_text', text: 'Content Edit' }, value: 'Content Edit' },
-              ],
-            },
-          }],
-        });
+app.action('select_task_type', errorHandler.wrapSlackHandler(handleTaskTypeSelection));
+app.action('submit_kb_request', errorHandler.wrapSlackHandler(handleSubmission));
+app.action('retry_action', errorHandler.wrapSlackHandler(startKBRequest));
 
-      case 2:
-        session.data.taskType = text;
-        session.step = 3;
-        return client.chat.postMessage({
-          channel: event.channel,
-          text: '📦 Which **Product** is this for?',
-        });
+// Health check endpoint
+app.event('app_mention', async ({ event, client, say }) => {
+  if (event.text.includes('health')) {
+    try {
+      const mondayHealth = await mondayAPI.healthCheck();
+      const workflowHealth = await workflowHandler.healthCheck();
+      const sessionCount = sessionManager.getActiveSessionCount();
 
-      case 3:
-        session.data.product = text;
-        session.step = 4;
-        return client.chat.postMessage({
-          channel: event.channel,
-          text: '✅ Great. Please provide a detailed **Description** of the upcoming changes.',
-        });
-
-      case 4:
-        session.data.description = text;
-        session.step = 5;
-        return client.chat.postMessage({
-          channel: event.channel,
-          text: '🔗 If you know the KBs you’d like to update, please paste their URLs here. (Optional)',
-        });
-
-      case 5:
-        session.data.kbUrls = text;
-        session.step = 6;
-        return client.chat.postMessage({
-          channel: event.channel,
-          text: '🗂️ Please add any links to supporting materials (Figma files, specs, product decks, etc.), or upload files.',
-        });
-
-      case 6:
-        if (files.length) {
-          session.data.files = session.data.files || [];
-          for (const f of files) session.data.files.push(f.id);
-          return client.chat.postMessage({
-            channel: event.channel,
-            text: `🖼️ Captured ${files.length} file(s). Click below to submit.`,
-            blocks: [{
-              type: 'actions',
-              elements: [{
-                type: 'button',
-                text: { type: 'plain_text', text: 'Submit KB Request' },
-                action_id: 'submit_kb_request',
-              }],
-            }],
-          });
-        }
-
-        session.data.supportingMaterials = text;
-        return client.chat.postMessage({
-          channel: event.channel,
-          text: 'When you’re ready, click the button below to submit your KB request.',
-          blocks: [{
-            type: 'actions',
-            elements: [{
-              type: 'button',
-              text: { type: 'plain_text', text: 'Submit KB Request' },
-              action_id: 'submit_kb_request',
-            }],
-          }],
-        });
+      await say(`<� *Health Status:*\n" Monday.com: ${mondayHealth.status}\n" AI Workflow: ${workflowHealth.status}\n" Active Sessions: ${sessionCount}`);
+    } catch (error) {
+      await say('L Health check failed');
     }
-  } catch (err) {
-    await client.chat.postMessage({
-      channel: event.channel,
-      text: `⚠️ Error: ${err.message || 'Unknown error'}`,
-    });
-    console.error('DM Q&A Error:', err);
   }
 });
 
-app.action('task_type_select', async ({ ack, body, client, action }) => {
-  await ack();
-  const user = body.user.id;
-  const session = sessions[user];
-  if (!session || session.step !== 2) return;
-
-  session.data.taskType = action.selected_option.value;
-  session.step = 3;
-  await client.chat.postMessage({
-    channel: body.channel.id,
-    text: '📦 Which **Product** is this for?',
-  });
-});
-
-app.action('submit_kb_request', async ({ ack, body, client }) => {
-  await ack();
-  const user = body.user.id;
-  const session = sessions[user];
-  if (!session || session.step < 6) return;
-
-  const raw_message = `${session.data.subject}\n${session.data.description}\n${session.data.supportingMaterials || ''}`;
-  const workflowOutput = await runWorkflow({
-    pm_message: raw_message,
-    user_id: user
-  });
-
-  console.log('Workflow Output:', workflowOutput);
-
-  const itemId = await createMondayItem({
-    ...workflowOutput,
-    slack_user: user
-  });
-
-  const mondayBoardUrl = `https://wix.monday.com/boards/${process.env.MONDAY_BOARD_ID}/pulses/${itemId}`;
-
-  await client.views.open({
-    trigger_id: body.trigger_id,
-    view: {
-      type: 'modal',
-      title: { type: 'plain_text', text: 'KB Request Submitted' },
-      close: { type: 'plain_text', text: 'Close' },
-      blocks: [
-        {
-          type: 'section',
-          text: { type: 'mrkdwn', text: '🎉 Your KB request has been submitted to the Monday.com board!' }
-        },
-        {
-          type: 'actions',
-          elements: [
-            {
-              type: 'button',
-              text: { type: 'plain_text', text: 'View on Monday.com' },
-              url: mondayBoardUrl
-            }
-          ]
-        }
-      ]
-    }
-  });
-
-  await client.chat.postMessage({
-    channel: body.channel.id,
-    text: `✅ Your KB request has been submitted.\n🔗 View it here: ${mondayBoardUrl}`
-  });
-
-  delete sessions[user];
-});
-
+// Express server for health checks
 const server = express();
 server.get('/', (req, res) => res.send('KB Request Bot is running'));
-server.listen(process.env.PORT || 3000, () => {
-  console.log(`🔗 Listening on port ${process.env.PORT || 3000}`);
+server.get('/health', async (req, res) => {
+  try {
+    const mondayHealth = await mondayAPI.healthCheck();
+    const workflowHealth = await workflowHandler.healthCheck();
+    const sessionCount = sessionManager.getActiveSessionCount();
+
+    res.json({
+      status: 'healthy',
+      services: {
+        monday: mondayHealth,
+        workflow: workflowHealth
+      },
+      activeSessions: sessionCount
+    });
+  } catch (error) {
+    res.status(500).json({ status: 'unhealthy', error: error.message });
+  }
 });
 
+server.listen(process.env.PORT || 3000, () => {
+  console.log(`< Listening on port ${process.env.PORT || 3000}`);
+});
+
+// Start the app
 (async () => {
-  await app.start();
-  console.log('⚡️ Slackbot is running in Socket Mode');
+  try {
+    await app.start();
+    console.log('� KB Slackbot app is running with comprehensive error handling!');
+  } catch (error) {
+    console.error('Failed to start the app:', error);
+    process.exit(1);
+  }
 })();
