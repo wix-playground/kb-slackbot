@@ -206,6 +206,8 @@ const workflowOutput = await runWorkflow({
   user_id: user
 });
 
+console.log('Workflow response:', workflowOutput);
+  
 const itemId = await createMondayItem({
   ...workflowOutput,
   slack_user: user
