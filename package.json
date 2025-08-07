@@ -1,8 +1,16 @@
 {
-  "name": "slack-monday-integration",
+  "name": "kb-slackbot",
   "version": "1.0.0",
-  "description": "Slack and Monday.com integration app",
+  "description": "KB Slackbot - Powered by Model Hub + Monday.com integration",
   "main": "app.js",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/wix-playground/kb-slackbot.git"
+  },
+  "homepage": "https://github.com/wix-playground/kb-slackbot#readme",
+  "bugs": {
+    "url": "https://github.com/wix-playground/kb-slackbot/issues"
+  },
   "scripts": {
     "build": "echo \"No build step needed\"",
     "dev": "nodemon app.js",
@@ -27,5 +35,7 @@
   },
   "engines": {
     "node": ">=18.0.0"
-  }
+  },
+  "author": "Wix Team",
+  "license": "MIT"
 }
